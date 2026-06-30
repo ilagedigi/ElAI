@@ -41,7 +41,7 @@ except Exception as e:
     st.error(f"Erro ao conectar ao banco de dados: {e}")
 
 # 3. GERENCIAMENTO DE IDENTIDADE PERSISTENTE (Via Cookies do Navegador)
-@st.cache_resource
+#@st.cache_resource
 def get_cookie_manager():
     return stx.CookieManager()
 
