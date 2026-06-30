@@ -9,7 +9,7 @@ import extra_streamlit_components as stx
 
 # 1. CONFIGURAÇÃO DA PÁGINA (Aparência de App Nativo)
 st.set_page_config(
-    page_title="GuiDocAssAI",
+    page_title="ElAI",
     page_icon="⚡",
     layout="centered",
     initial_sidebar_state="collapsed"
@@ -41,7 +41,7 @@ except Exception as e:
     st.error(f"Erro ao conectar ao banco de dados: {e}")
 
 # 3. GERENCIAMENTO DE IDENTIDADE PERSISTENTE (Via Cookies do Navegador)
-#@st.cache_resource
+@st.cache_resource
 def get_cookie_manager():
     return stx.CookieManager()
 
@@ -202,4 +202,8 @@ if prompt := st.chat_input("Como posso ajudar com o seu veículo elétrico hoje?
                 supabase.table("chat_history").insert({"user_id": user_id, "role": "assistant", "content": resposta_final}).execute()
 
             except Exception as e:
-                st.error(f"Erro ao gerar resposta da Inteligência Artificial: {e}")
+                # Trata especificamente o erro de indisponibilidade ou alta demanda
+                if "503" in str(e) or "high demand" in str(e).lower():
+                    st.error("⚠️ O servidor da IA está muito carregado no momento devido à alta demanda global. Por favor, aguarde alguns segundos e envie sua pergunta novamente.")
+                else:
+                    st.error(f"Erro ao gerar resposta da Inteligência Artificial: {e}")
