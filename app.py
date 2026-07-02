@@ -111,12 +111,13 @@ if "selected_files" not in st.session_state:
 def listar_documentos_disponiveis():
     manuais = glob.glob("docs/manuais/*")
     tips = glob.glob("docs/tips/*")
-    return sorted(manuais), sorted(tips)
+    carregadores = glob.glob("docs/manuais_carregadores/*")
+    return sorted(manuais), sorted(tips), sorted(carregadores)
 
-manuais_disponiveis, tips_disponiveis = listar_documentos_disponiveis()
+manuais_disponiveis, tips_disponiveis, carregadores_disponiveis = listar_documentos_disponiveis()
 
 # Remove do estado arquivos que não existem mais nos diretórios
-arquivos_disponiveis = set(manuais_disponiveis + tips_disponiveis)
+arquivos_disponiveis = set(manuais_disponiveis + tips_disponiveis + carregadores_disponiveis)
 st.session_state.selected_files = [
     arquivo for arquivo in st.session_state.selected_files
     if arquivo in arquivos_disponiveis
@@ -135,12 +136,19 @@ if "tips_selecionadas" not in st.session_state:
         if arquivo in tips_disponiveis
     ]
 
+if "carregadores_selecionadas" not in st.session_state:
+    st.session_state.tips_selecionadas = [
+        arquivo for arquivo in st.session_state.selected_files
+        if arquivo in carregadores_disponiveis
+    ]
+
 # 6. INTERFACE: MENU DE CONFIGURAÇÕES (Engrenagem Expansível)
 def salvar_configuracoes():
     try:
         selecionados = (
             st.session_state.manuais_selecionados +
-            st.session_state.tips_selecionadas
+            st.session_state.tips_selecionadas +
+            st.session_state.carregadores_selecionadas
         )
 
         st.session_state.selected_files = selecionados
@@ -174,8 +182,22 @@ with st.expander("⚙️ Configurações do Veículo (Selecione seus Manuais e D
     else:
         st.info("Nenhum manual encontrado em `docs/manuais/`.")
 
+    if carregadores_disponiveis:
+        st.markdown("**⚡ Manuais de Carregadores:**")
+
+        st.multiselect(
+            label="Selecione um ou mais manuais de carregadores",
+            options=carregadores_disponiveis,
+            key="carregadores_selecionados",
+            format_func=lambda caminho: os.path.basename(caminho),
+            placeholder="Digite para pesquisar um carregador...",
+            on_change=salvar_configuracoes
+        )
+    else:
+        st.info("Nenhum manual encontrado em `docs/manuais/`.")
+        
     if tips_disponiveis:
-        st.markdown("**⚡ Dicas e Guias de Carregamento:**")
+        st.markdown("**💡 Dicas e Guias de Carregamento:**")
 
         st.multiselect(
             label="Selecione uma ou mais dicas",
