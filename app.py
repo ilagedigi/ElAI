@@ -41,7 +41,6 @@ except Exception as e:
     st.error(f"Erro ao conectar ao banco de dados: {e}")
 
 # 3. GERENCIAMENTO DE IDENTIDADE PERSISTENTE (Via Cookies do Navegador)
-#@st.cache_resource
 def get_cookie_manager():
     return stx.CookieManager()
 
@@ -62,6 +61,7 @@ user_id = st.session_state.get("user_id", str(uuid.uuid4()))
 # Inicializa estados de histórico e arquivos locais
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
+
 if "initialized" not in st.session_state:
     st.session_state.initialized = False
 
@@ -69,18 +69,37 @@ if "initialized" not in st.session_state:
 if not st.session_state.initialized and "supabase" in globals():
     try:
         # Carrega histórico anterior filtrado por UUID
-        chat_res = supabase.table("chat_history").select("role", "content").eq("user_id", user_id).order("created_at").execute()
-        st.session_state.chat_history = [{"role": row["role"], "content": row["content"]} for row in chat_res.data]
+        chat_res = (
+            supabase
+            .table("chat_history")
+            .select("role", "content")
+            .eq("user_id", user_id)
+            .order("created_at")
+            .execute()
+        )
+
+        st.session_state.chat_history = [
+            {"role": row["role"], "content": row["content"]}
+            for row in chat_res.data
+        ]
         
         # Carrega arquivos selecionados anteriormente pelo usuário
-        settings_res = supabase.table("user_settings").select("selected_files").eq("user_id", user_id).execute()
+        settings_res = (
+            supabase
+            .table("user_settings")
+            .select("selected_files")
+            .eq("user_id", user_id)
+            .execute()
+        )
+
         if settings_res.data:
-            st.session_state.selected_files = settings_res.data[0]["selected_files"]
+            st.session_state.selected_files = settings_res.data[0].get("selected_files", [])
         else:
             st.session_state.selected_files = []
             
         st.session_state.initialized = True
-    except Exception as e:
+
+    except Exception:
         st.session_state.selected_files = []
         st.session_state.initialized = True
 
@@ -96,39 +115,78 @@ def listar_documentos_disponiveis():
 
 manuais_disponiveis, tips_disponiveis = listar_documentos_disponiveis()
 
+# Remove do estado arquivos que não existem mais nos diretórios
+arquivos_disponiveis = set(manuais_disponiveis + tips_disponiveis)
+st.session_state.selected_files = [
+    arquivo for arquivo in st.session_state.selected_files
+    if arquivo in arquivos_disponiveis
+]
+
+# Inicializa os estados dos multiselects com base no que veio do Supabase
+if "manuais_selecionados" not in st.session_state:
+    st.session_state.manuais_selecionados = [
+        arquivo for arquivo in st.session_state.selected_files
+        if arquivo in manuais_disponiveis
+    ]
+
+if "tips_selecionadas" not in st.session_state:
+    st.session_state.tips_selecionadas = [
+        arquivo for arquivo in st.session_state.selected_files
+        if arquivo in tips_disponiveis
+    ]
+
 # 6. INTERFACE: MENU DE CONFIGURAÇÕES (Engrenagem Expansível)
+def salvar_configuracoes():
+    try:
+        selecionados = (
+            st.session_state.manuais_selecionados +
+            st.session_state.tips_selecionadas
+        )
+
+        st.session_state.selected_files = selecionados
+
+        supabase.table("user_settings").upsert({
+            "user_id": user_id,
+            "selected_files": selecionados
+        }).execute()
+
+        st.toast("✅ Configurações salvas automaticamente")
+
+    except Exception as e:
+        st.error(f"Erro ao salvar configurações: {e}")
+
 with st.expander("⚙️ Configurações do Veículo (Selecione seus Manuais e Dicas)"):
-    st.markdown("Marque os conteúdos que o Agente deve usar como base de conhecimento:")
-    
-    novos_selecionados = []
-    
+    st.markdown(
+        "Pesquise e selecione os conteúdos que o Agente deve usar como base de conhecimento:"
+    )
+
     if manuais_disponiveis:
         st.markdown("**📄 Manuais do Proprietário:**")
-        for caminho in manuais_disponiveis:
-            nome_arquivo = os.path.basename(caminho)
-            ja_marcado = caminho in st.session_state.selected_files
-            if st.checkbox(nome_arquivo, value=ja_marcado, key=f"chk_{caminho}"):
-                novos_selecionados.append(caminho)
-                
+
+        st.multiselect(
+            label="Selecione um ou mais manuais",
+            options=manuais_disponiveis,
+            key="manuais_selecionados",
+            format_func=lambda caminho: os.path.basename(caminho),
+            placeholder="Digite para pesquisar um manual...",
+            on_change=salvar_configuracoes
+        )
+    else:
+        st.info("Nenhum manual encontrado em `docs/manuais/`.")
+
     if tips_disponiveis:
         st.markdown("**⚡ Dicas e Guias de Carregamento:**")
-        for caminho in tips_disponiveis:
-            nome_arquivo = os.path.basename(caminho)
-            ja_marcado = caminho in st.session_state.selected_files
-            if st.checkbox(nome_arquivo, value=ja_marcado, key=f"chk_{caminho}"):
-                novos_selecionados.append(caminho)
 
-    if st.button("💾 Salvar Configurações"):
-        try:
-            st.session_state.selected_files = novos_selecionados
-            supabase.table("user_settings").upsert({
-                "user_id": user_id,
-                "selected_files": novos_selecionados
-            }).execute()
-            st.success("Configurações salvas com sucesso!")
-            st.rerun()
-        except Exception as e:
-            st.error(f"Erro ao salvar configurações: {e}")
+        st.multiselect(
+            label="Selecione uma ou mais dicas",
+            options=tips_disponiveis,
+            key="tips_selecionadas",
+            format_func=lambda caminho: os.path.basename(caminho),
+            placeholder="Digite para pesquisar uma dica...",
+            on_change=salvar_configuracoes
+        )
+    else:
+        st.info("Nenhuma dica encontrada em `docs/tips/`.")
 
 st.markdown("---")
 
@@ -143,14 +201,24 @@ for message in st.session_state.chat_history:
 
 if prompt := st.chat_input("Como posso ajudar com o seu veículo elétrico hoje?"):
     if not st.session_state.selected_files:
-        st.warning("⚠️ Abra a engrenagem ⚙️ acima e selecione pelo menos um manual ou guia para ativar o assistente.")
+        st.warning(
+            "⚠️ Abra a engrenagem ⚙️ acima e selecione pelo menos um manual ou guia para ativar o assistente."
+        )
     else:
         with st.chat_message("user"):
             st.markdown(prompt)
-        st.session_state.chat_history.append({"role": "user", "content": prompt})
+
+        st.session_state.chat_history.append({
+            "role": "user",
+            "content": prompt
+        })
         
         try:
-            supabase.table("chat_history").insert({"user_id": user_id, "role": "user", "content": prompt}).execute()
+            supabase.table("chat_history").insert({
+                "user_id": user_id,
+                "role": "user",
+                "content": prompt
+            }).execute()
         except Exception:
             pass
 
@@ -161,11 +229,13 @@ if prompt := st.chat_input("Como posso ajudar com o seu veículo elétrico hoje?
                 client = genai.Client(api_key=GEMINI_API_KEY)
                 
                 contexto_documentos = ""
+
                 for caminho_arquivo in st.session_state.selected_files:
                     if os.path.exists(caminho_arquivo):
                         nome = os.path.basename(caminho_arquivo)
-                        if caminho_arquivo.endswith(('.txt', '.md', '.tips')):
-                            with open(caminho_arquivo, 'r', encoding='utf-8') as file_content:
+
+                        if caminho_arquivo.endswith((".txt", ".md", ".tips")):
+                            with open(caminho_arquivo, "r", encoding="utf-8") as file_content:
                                 contexto_documentos += f"\n--- CONTEÚDO DO ARQUIVO: {nome} ---\n"
                                 contexto_documentos += file_content.read()
                         else:
@@ -188,7 +258,7 @@ if prompt := st.chat_input("Como posso ajudar com o seu veículo elétrico hoje?
                 ]
 
                 response = client.models.generate_content(
-                    model='gemini-2.5-flash',
+                    model="gemini-2.5-flash",
                     contents=contents_payload,
                     config=types.GenerateContentConfig(
                         system_instruction=system_instruction,
@@ -199,12 +269,23 @@ if prompt := st.chat_input("Como posso ajudar com o seu veículo elétrico hoje?
                 resposta_final = response.text
                 message_placeholder.markdown(resposta_final)
                 
-                st.session_state.chat_history.append({"role": "assistant", "content": resposta_final})
-                supabase.table("chat_history").insert({"user_id": user_id, "role": "assistant", "content": resposta_final}).execute()
+                st.session_state.chat_history.append({
+                    "role": "assistant",
+                    "content": resposta_final
+                })
+
+                supabase.table("chat_history").insert({
+                    "user_id": user_id,
+                    "role": "assistant",
+                    "content": resposta_final
+                }).execute()
 
             except Exception as e:
                 # Trata especificamente o erro de indisponibilidade ou alta demanda
                 if "503" in str(e) or "high demand" in str(e).lower():
-                    st.error("⚠️ O servidor da IA está muito carregado no momento devido à alta demanda global. Por favor, aguarde alguns segundos e envie sua pergunta novamente.")
+                    st.error(
+                        "⚠️ O servidor da IA está muito carregado no momento devido à alta demanda global. "
+                        "Por favor, aguarde alguns segundos e envie sua pergunta novamente."
+                    )
                 else:
                     st.error(f"Erro ao gerar resposta da Inteligência Artificial: {e}")
