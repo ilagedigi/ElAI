@@ -136,8 +136,8 @@ if "tips_selecionadas" not in st.session_state:
         if arquivo in tips_disponiveis
     ]
 
-if "carregadores_selecionadas" not in st.session_state:
-    st.session_state.tips_selecionadas = [
+if "carregadores_selecionados" not in st.session_state:
+    st.session_state.carregadores_selecionados = [
         arquivo for arquivo in st.session_state.selected_files
         if arquivo in carregadores_disponiveis
     ]
@@ -148,7 +148,7 @@ def salvar_configuracoes():
         selecionados = (
             st.session_state.manuais_selecionados +
             st.session_state.tips_selecionadas +
-            st.session_state.carregadores_selecionadas
+            st.session_state.carregadores_selecionados
         )
 
         st.session_state.selected_files = selecionados
